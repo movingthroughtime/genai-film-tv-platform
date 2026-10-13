@@ -1,28 +1,32 @@
 # Generative AI Platform for Film & Television Production
 
-This repository is a starter monorepo for a generative-AI platform tailored to film and television production. It includes:
+This repository is a production-oriented starter for a generative-AI platform built for film and television production workflows.
 
-- Express API with Postgres-backed project, scene, and job persistence
-- JWT-based demo auth and role checks
-- Redis-backed job queue for async generation tasks
-- Python FastAPI ML microservice with OpenAI integration fallback
-- Worker service that processes generation jobs
-- Minimal front-end dashboard for project and job management
-- Docker Compose stack with Postgres, Redis, MinIO, backend, worker, ML service, and frontend
+It includes:
+
+- Express API with PostgreSQL persistence
+- JWT-based auth with role-based access control (writer, director, producer, admin)
+- Redis-backed job queue for long-running generation work
+- Python FastAPI ML orchestration service with OpenAI-ready integration
+- Worker service for async generation jobs
+- Prompt template library and approval workflow
+- Audit logging for prompts, jobs, and approvals
+- Minimal dashboard for projects, jobs, templates, and approvals
+- Docker Compose stack for PostgreSQL, Redis, MinIO, backend, worker, ML service, and frontend
 
 ## Architecture
 
-- Frontend: project and job dashboard UI
-- Backend: REST API and orchestration
-- Queue: Redis + Bull for background jobs
-- Worker: dispatches jobs to the ML service
-- ML service: script/storyboard/shotlist generation with an OpenAI fallback for local dev
-- Storage: MinIO-ready for generated assets
-- Database: PostgreSQL for project-scoped persistence
+- Frontend: dashboard for projects, jobs, approvals, and templates
+- Backend: REST API and orchestration logic
+- Queue: Redis + Bull for generation jobs
+- Worker: dispatches queued jobs to the ML service
+- ML service: generation logic for scripts, storyboards, and shotlists
+- Storage: MinIO-ready for generated assets and renders
+- Database: PostgreSQL for projects, scenes, jobs, templates, approvals, and audit logs
 
 ## Requirements
 
-- Docker and Docker Compose
+- Docker + Docker Compose
 - Node.js 20+
 - Python 3.12+
 - OpenAI API key (optional for local dev fallback)
@@ -41,26 +45,38 @@ cp .env.example .env
 docker compose up --build
 ```
 
-3. Open the app:
+3. Open:
 
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:4000
-- ML service docs: http://localhost:8000/docs
+- ML docs: http://localhost:8000/docs
 - MinIO console: http://localhost:9001
 
-## Auth
-
-Use the demo login endpoint:
+## Demo auth
 
 ```bash
 curl -X POST http://localhost:4000/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"demo@studio.local","name":"Demo User"}'
+  -d '{"email":"admin@studio.local","name":"Admin User","role":"admin"}'
 ```
 
-Use the returned JWT as a bearer token for protected routes.
+Available demo roles:
 
-## Example API requests
+- writer
+- director
+- producer
+- admin
+
+## Core features
+
+- Projects and scenes
+- Prompt templates and variable-driven generation flows
+- Job queue with async processing
+- Human approval state transitions per job
+- Audit log tracking for all actions
+- Role-protected endpoints
+
+## Workflow example
 
 Create a project:
 
@@ -71,23 +87,26 @@ curl -X POST http://localhost:4000/api/projects \
   -d '{"title":"Project Atlas","description":"A rainy urban thriller."}'
 ```
 
-Create a scene and queue generation tasks:
+Create a scene:
 
 ```bash
 curl -X POST http://localhost:4000/api/projects/<project-id>/scenes \
   -H 'Authorization: Bearer <jwt>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "title": "Night exterior chase",
-    "brief": "A tense night chase through a wet city block.",
-    "tasks": ["script", "storyboard", "shotlist"]
+    "title":"Night exterior chase",
+    "brief":"A tense night chase through a wet city block.",
+    "tasks":["script","storyboard","shotlist"]
   }'
 ```
 
-Check a job:
+Approve a job:
 
 ```bash
-curl http://localhost:4000/api/jobs/<job-id>
+curl -X POST http://localhost:4000/api/jobs/<job-id>/approve \
+  -H 'Authorization: Bearer <jwt>' \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"approved","comment":"This matches the board-approved interpretation."}'
 ```
 
 ## Database schema
@@ -96,23 +115,15 @@ See `db/schema.sql` for the PostgreSQL schema.
 
 ## Production notes
 
-This MVP includes:
+For production, extend this with:
 
-- JWT auth skeleton
-- Postgres-backed persistence
-- Redis queue
-- MinIO-compatible asset strategy
-- Basic moderation / logging hooks
-- Real OpenAI call integration when configured
-
-For production, add:
-
-- RBAC with roles (writer, director, producer, admin)
-- Abstract model registry and prompt templates
-- Human-in-the-loop approvals
-- Policy screening for generated output
-- Asset versioning, thumbnails, and transcodes
-- Observability and billing
+- model registry and prompt versioning
+- RBAC per-project permissions
+- moderation pipeline
+- real asset storage and transcode pipeline
+- advanced approval workflows and notifications
+- analytics and billing
+- deployment automation and observability
 
 ## License
 

@@ -19,22 +19,22 @@ def health():
 
 @app.post('/generate')
 def generate(req: GenerateRequest):
-    taskType = req.taskType.lower()
+    task_type = req.taskType.lower()
     api_key = os.getenv('OPENAI_API_KEY', '').strip()
     model = os.getenv('MODEL_NAME', 'gpt-4o-mini')
 
-    if taskType == 'script':
+    if task_type == 'script':
         content = build_script(req.title, req.brief)
-    elif taskType == 'storyboard':
+    elif task_type == 'storyboard':
         content = build_storyboard(req.title, req.brief)
-    elif taskType == 'shotlist':
+    elif task_type == 'shotlist':
         content = build_shotlist(req.title, req.brief)
     else:
-        raise HTTPException(status_code=400, detail=f'Unsupported taskType: {taskType}')
+        raise HTTPException(status_code=400, detail=f'Unsupported taskType: {task_type}')
 
     if api_key and api_key != 'demo-key':
         try:
-            llm_content = call_openai(model, f"Generate a {taskType} for a film scene. Title: {req.title}. Brief: {req.brief}")
+            llm_content = call_openai(model, f"Generate a {task_type} for a film scene. Title: {req.title}. Brief: {req.brief}")
             if llm_content:
                 content = llm_content
         except Exception as exc:

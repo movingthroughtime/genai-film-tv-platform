@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GenAI Studio</title>
+    <title>Studio AI Console</title>
     <style>
       :root {
         --bg: #0d1117;
@@ -14,130 +14,118 @@
         --accent: #7dd3fc;
         --accent-2: #a78bfa;
         --success: #2ea043;
+        --warn: #f59e0b;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        font-family: Arial, sans-serif;
         background: linear-gradient(135deg, #090d12, #101827 60%, #1b1027);
         color: var(--text);
+        font-family: Arial, sans-serif;
       }
-      .container {
-        max-width: 1200px;
-        margin: 40px auto;
-        padding: 24px;
-      }
+      .container { max-width: 1280px; margin: 32px auto; padding: 24px; }
       .topbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
+        display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;
       }
       h1, h2 { margin-top: 0; }
+      .badge {
+        display: inline-block; padding: 6px 10px; border-radius: 999px; background: rgba(125, 211, 252, 0.14); color: var(--accent); font-size: 12px; font-weight: bold;
+      }
       .layout {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 24px;
+        display: grid; grid-template-columns: 1.1fr 1.4fr; gap: 24px;
       }
       .panel {
-        background: rgba(22, 27, 34, 0.9);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
-        padding: 20px;
+        background: rgba(22, 27, 34, 0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 18px; margin-bottom: 18px;
       }
-      label {
-        display: block;
-        margin-top: 12px;
-        margin-bottom: 6px;
-        color: var(--muted);
-      }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+      label { display: block; margin-top: 12px; margin-bottom: 6px; color: var(--muted); }
       input, textarea, select, button {
-        width: 100%;
-        padding: 12px 14px;
-        border-radius: 10px;
-        border: 1px solid rgba(255,255,255,0.08);
-        background: var(--panel-2);
-        color: var(--text);
-        font-size: 14px;
+        width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: var(--panel-2); color: var(--text); font-size: 14px;
       }
       textarea { min-height: 120px; resize: vertical; }
       button {
-        margin-top: 18px;
-        font-weight: 700;
-        cursor: pointer;
-        background: linear-gradient(135deg, var(--accent), var(--accent-2));
-        color: #0b1220;
-        border: none;
+        margin-top: 18px; cursor: pointer; border: none; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0b1220; font-weight: 700;
       }
-      ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-      }
+      ul { list-style: none; margin: 0; padding: 0; }
       li {
-        background: rgba(255,255,255,0.02);
-        border: 1px solid rgba(255,255,255,0.05);
-        border-radius: 10px;
-        padding: 12px;
-        margin-top: 10px;
+        background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 12px; margin-top: 10px;
       }
       .status {
-        display: inline-block;
-        background: rgba(46, 160, 67, 0.18);
-        color: #9be9a8;
-        border-radius: 999px;
-        padding: 4px 8px;
-        font-size: 12px;
+        display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(46, 160, 67, 0.14); color: #9be9a8;
       }
+      .status.warn { background: rgba(245, 158, 11, 0.14); color: #fbbf24; }
+      .status.danger { background: rgba(239, 68, 68, 0.14); color: #fca5a5; }
       .muted { color: var(--muted); }
+      .inline-row { display: flex; gap: 10px; }
     </style>
   </head>
   <body>
     <div class="container">
       <div class="topbar">
-        <h1>GenAI Studio</h1>
-        <div class="status">Film / TV Production AI</div>
+        <h1>Studio AI Console</h1>
+        <div class="badge">Film / TV Production</div>
+      </div>
+
+      <div class="grid">
+        <section class="panel">
+          <h2>Auth</h2>
+          <label>Role</label>
+          <select id="roleSelect">
+            <option value="writer">writer</option>
+            <option value="director">director</option>
+            <option value="producer">producer</option>
+            <option value="admin">admin</option>
+          </select>
+          <label>Email</label>
+          <input id="email" value="admin@studio.local" />
+          <label>Name</label>
+          <input id="name" value="Admin User" />
+          <button id="loginBtn">Log in</button>
+          <div id="authStatus" class="muted" style="margin-top: 12px;">Not authenticated.</div>
+        </section>
+
+        <section class="panel">
+          <h2>Project brief</h2>
+          <label>Project title</label>
+          <input id="projectTitle" value="Project Atlas" />
+          <label>Description</label>
+          <textarea id="projectDescription">A cinematic thriller in a rainy urban environment with a morally compromised protagonist.</textarea>
+          <button id="createProjectBtn">Create project</button>
+        </section>
       </div>
 
       <div class="layout">
         <section class="panel">
-          <h2>Auth</h2>
-          <label>Email</label>
-          <input id="email" value="demo@studio.local" />
-          <label>Name</label>
-          <input id="name" value="Demo User" />
-          <button id="loginBtn">Log in</button>
-          <div id="authStatus" class="muted" style="margin-top: 12px;"></div>
-
-          <h2 style="margin-top: 28px;">Create project</h2>
-          <label>Project title</label>
-          <input id="projectTitle" value="Project Atlas" />
-          <label>Description</label>
-          <textarea id="projectDescription">A cinematic thriller in a rain-soaked urban environment.</textarea>
-          <button id="createProjectBtn">Create project</button>
-
-          <h2 style="margin-top: 28px;">New scene</h2>
+          <h2>New scene</h2>
           <label>Project ID</label>
-          <input id="projectId" placeholder="Project id from project list" />
+          <input id="projectId" placeholder="Project id from the list" />
           <label>Scene title</label>
           <input id="sceneTitle" value="Night exterior chase" />
           <label>Scene brief</label>
-          <textarea id="sceneBrief">A tense night chase through a wet city block with neon reflections and escalating tension.</textarea>
+          <textarea id="sceneBrief">A tense chase through a wet city block with neon reflections and a collapsing timeline.</textarea>
           <label>Tasks</label>
           <select id="sceneTasks" multiple>
             <option value="script" selected>script</option>
             <option value="storyboard" selected>storyboard</option>
             <option value="shotlist" selected>shotlist</option>
           </select>
-          <button id="createSceneBtn">Create scene & queue generation</button>
+          <button id="createSceneBtn">Queue generation</button>
+
+          <h2 style="margin-top: 28px;">Prompt template</h2>
+          <label>Name</label>
+          <input id="templateName" value="Urban Thriller" />
+          <label>Prompt</label>
+          <textarea id="templatePrompt">Write a cinematic scene in the style of {tone} with a haptic sense of {location}. Keep the dialogue sharp and grounded.</textarea>
+          <button id="createTemplateBtn">Save template</button>
         </section>
 
         <section class="panel">
           <h2>Projects</h2>
           <ul id="projectList"></ul>
-
           <h2 style="margin-top: 28px;">Jobs</h2>
           <ul id="jobList"></ul>
+          <h2 style="margin-top: 28px;">Approvals</h2>
+          <ul id="approvalList"></ul>
         </section>
       </div>
     </div>
@@ -145,13 +133,14 @@
     <script src="/config.js"></script>
     <script>
       const API_BASE_URL = window.API_BASE_URL || 'http://localhost:4000';
-      let authToken = localStorage.getItem('genai_token') || '';
-      const authStatus = document.getElementById('authStatus');
       const projectList = document.getElementById('projectList');
       const jobList = document.getElementById('jobList');
+      const approvalList = document.getElementById('approvalList');
+      const authStatus = document.getElementById('authStatus');
       const projectIdInput = document.getElementById('projectId');
+      let authToken = localStorage.getItem('studio_ai_token') || '';
 
-      function getHeaders() {
+      function headers() {
         return {
           'Content-Type': 'application/json',
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
@@ -159,33 +148,46 @@
       }
 
       async function fetchJson(url, options = {}) {
-        const res = await fetch(url, { ...options, headers: { ...getHeaders(), ...(options.headers || {}) } });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || res.statusText);
+        const response = await fetch(url, {
+          ...options,
+          headers: { ...headers(), ...(options.headers || {}) }
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || response.statusText);
         }
-        return res.json();
+        return response.json();
+      }
+
+      function renderStatus(label, variant = '') {
+        return `<span class="status ${variant}">${label}</span>`;
       }
 
       async function login() {
-        const email = document.getElementById('email').value;
-        const name = document.getElementById('name').value;
+        const payload = {
+          email: document.getElementById('email').value,
+          name: document.getElementById('name').value,
+          role: document.getElementById('roleSelect').value
+        };
+
         const result = await fetchJson(`${API_BASE_URL}/api/auth/login`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, name })
+          body: JSON.stringify(payload)
         });
+
         authToken = result.token;
-        localStorage.setItem('genai_token', authToken);
-        authStatus.textContent = `Logged in as ${result.user.name} (${result.user.role})`;
+        localStorage.setItem('studio_ai_token', authToken);
+        authStatus.textContent = `Authenticated as ${result.user.name} (${result.user.role})`;
         await loadProjects();
         await loadJobs();
+        await loadApprovals();
       }
 
       async function loadProjects() {
         try {
           const projects = await fetchJson(`${API_BASE_URL}/api/projects`);
           projectList.innerHTML = '';
+
           if (!projects.length) {
             projectList.innerHTML = '<li class="muted">No projects yet.</li>';
             return;
@@ -195,11 +197,10 @@
             const li = document.createElement('li');
             li.innerHTML = `
               <strong>${project.title}</strong><br>
-              <span class="muted">${project.id}</span>
+              <span class="muted">${project.id}</span><br>
+              ${project.description || 'No description'}
             `;
-            li.addEventListener('click', () => {
-              projectIdInput.value = project.id;
-            });
+            li.addEventListener('click', () => projectIdInput.value = project.id);
             projectList.appendChild(li);
           });
         } catch (err) {
@@ -211,6 +212,7 @@
         try {
           const jobs = await fetchJson(`${API_BASE_URL}/api/jobs`);
           jobList.innerHTML = '';
+
           if (!jobs.length) {
             jobList.innerHTML = '<li class="muted">No jobs yet.</li>';
             return;
@@ -221,7 +223,7 @@
             li.innerHTML = `
               <strong>${job.taskType}</strong><br>
               <span class="muted">Job: ${job.id}</span><br>
-              <span class="status">${job.status || 'queued'}</span>
+              ${renderStatus(job.status || 'queued', job.status === 'approved' ? '' : job.status === 'rejected' ? 'danger' : 'warn')}
             `;
             jobList.appendChild(li);
           });
@@ -230,52 +232,94 @@
         }
       }
 
+      async function loadApprovals() {
+        try {
+          const approvals = await fetchJson(`${API_BASE_URL}/api/approvals`);
+          approvalList.innerHTML = '';
+
+          if (!approvals.length) {
+            approvalList.innerHTML = '<li class="muted">No approvals yet.</li>';
+            return;
+          }
+
+          approvals.forEach((approval) => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+              <strong>${approval.status}</strong><br>
+              <span class="muted">Job: ${approval.jobId}</span><br>
+              ${approval.comment || 'No comment'}
+            `;
+            approvalList.appendChild(li);
+          });
+        } catch (err) {
+          approvalList.innerHTML = '<li class="muted">Approval list unavailable.</li>';
+        }
+      }
+
       document.getElementById('loginBtn').addEventListener('click', login);
 
       document.getElementById('createProjectBtn').addEventListener('click', async () => {
         try {
-          const payload = {
-            title: document.getElementById('projectTitle').value,
-            description: document.getElementById('projectDescription').value
-          };
           const project = await fetchJson(`${API_BASE_URL}/api/projects`, {
             method: 'POST',
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+              title: document.getElementById('projectTitle').value,
+              description: document.getElementById('projectDescription').value
+            })
           });
           projectIdInput.value = project.id;
           await loadProjects();
         } catch (err) {
-          authStatus.textContent = 'Please log in first.';
+          authStatus.textContent = 'Log in first to create a project.';
         }
       });
 
       document.getElementById('createSceneBtn').addEventListener('click', async () => {
         try {
-          const selected = Array.from(document.getElementById('sceneTasks').selectedOptions).map((o) => o.value);
+          const selected = Array.from(document.getElementById('sceneTasks').selectedOptions).map((option) => option.value);
           const payload = {
             title: document.getElementById('sceneTitle').value,
             brief: document.getElementById('sceneBrief').value,
             tasks: selected.length ? selected : ['script']
           };
 
-          const response = await fetchJson(`${API_BASE_URL}/api/projects/${projectIdInput.value}/scenes`, {
+          const result = await fetchJson(`${API_BASE_URL}/api/projects/${projectIdInput.value}/scenes`, {
             method: 'POST',
             body: JSON.stringify(payload)
           });
-          console.log('Scene created:', response);
+          console.log('Scene created:', result);
           await loadJobs();
         } catch (err) {
           authStatus.textContent = 'Please log in and select a project first.';
         }
       });
 
+      document.getElementById('createTemplateBtn').addEventListener('click', async () => {
+        try {
+          const template = await fetchJson(`${API_BASE_URL}/api/templates`, {
+            method: 'POST',
+            body: JSON.stringify({
+              name: document.getElementById('templateName').value,
+              description: 'Studio generation template',
+              template: document.getElementById('templatePrompt').value,
+              variables: ['tone', 'location']
+            })
+          });
+          console.log('Template created:', template);
+        } catch (err) {
+          authStatus.textContent = 'Only a producer or admin can save templates.';
+        }
+      });
+
       if (authToken) {
-        authStatus.textContent = 'Token loaded from local storage.';
+        authStatus.textContent = 'Token restored from local storage.';
       }
 
       loadProjects();
       loadJobs();
+      loadApprovals();
       setInterval(loadJobs, 5000);
+      setInterval(loadApprovals, 5000);
     </script>
   </body>
 </html>
