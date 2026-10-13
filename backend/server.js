@@ -14,9 +14,10 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/genai';
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
-const generationQueue = new Queue('generation', REDIS_URL);
 
+const generationQueue = new Queue('generation', REDIS_URL);
 const db = new Client({ connectionString: DATABASE_URL });
+
 const memory = {
   users: new Map(),
   projects: new Map(),
@@ -35,18 +36,7 @@ const demoUsers = [
 ];
 
 demoUsers.forEach((user) => memory.users.set(user.email.toLowerCase(), user));
-
 let dbReady = false;
-
-async function ensureDbSchema() {
-  if (!dbReady) return;
-  try {
-    const schemaSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
-    await db.query(schemaSql);
-  } catch (err) {
-    console.warn('Schema init warning:', err.message);
-  }
-}
 
 async function initDb() {
   try {
@@ -56,6 +46,16 @@ async function initDb() {
     await ensureDbSchema();
   } catch (err) {
     console.warn('PostgreSQL unavailable, using in-memory fallback:', err.message);
+  }
+}
+
+async function ensureDbSchema() {
+  if (!dbReady) return;
+  try {
+    const schemaSql = fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sql'), 'utf8');
+    await db.query(schemaSql);
+  } catch (err) {
+    console.warn('Schema init warning:', err.message);
   }
 }
 
@@ -69,8 +69,7 @@ function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Missing bearer token' });
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = payload;
+    req.user = jwt.verify(token, JWT_SECRET);
     return next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid token' });
@@ -102,7 +101,7 @@ function addAuditLog({ actorId, action, entityType, entityId, details = {} }) {
     db.query(
       'INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
       [entry.id, entry.actorId, entry.action, entry.entityType, entry.entityId, JSON.stringify(details)]
-    ).catch((err) => console.warn('Audit log insert failed:', err.message));
+    ).catch((err) => console.warn('Audit insert failed:', err.message));
   }
   return entry;
 }
@@ -223,22 +222,6 @@ async function getProjectById(projectId) {
     return result.rows[0] || null;
   }
   return memory.projects.get(projectId) || null;
-}
-
-async function getScenes() {
-  if (dbReady) {
-    const result = await db.query('SELECT * FROM scenes ORDER BY created_at DESC');
-    return result.rows;
-  }
-  return Array.from(memory.scenes.values());
-}
-
-async function getSceneById(sceneId) {
-  if (dbReady) {
-    const result = await db.query('SELECT * FROM scenes WHERE id = $1', [sceneId]);
-    return result.rows[0] || null;
-  }
-  return memory.scenes.get(sceneId) || null;
 }
 
 async function getJobs() {
@@ -367,9 +350,8 @@ app.post('/api/projects/:projectId/scenes', async (req, res) => {
 
   const createdJobs = [];
   for (const taskType of tasks) {
-    const jobId = uuidv4();
     const job = {
-      id: jobId,
+      id: uuidv4(),
       sceneId,
       projectId: project.id,
       taskType,
@@ -378,10 +360,10 @@ app.post('/api/projects/:projectId/scenes', async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    memory.jobs.set(jobId, job);
+    memory.jobs.set(job.id, job);
     await dbInsertJob(job);
 
-    const queueJob = await generationQueue.add({
+    await generationQueue.add({
       sceneId,
       projectId: project.id,
       title: scene.title,
@@ -390,12 +372,7 @@ app.post('/api/projects/:projectId/scenes', async (req, res) => {
       userId: req.user.sub
     }, { attempts: 3, backoff: 5000 });
 
-    job.queueId = queueJob.id;
-    job.id = queueJob.id;
-    memory.jobs.set(queueJob.id, { ...job, id: queueJob.id });
-    await dbInsertJob({ ...job, id: queueJob.id });
-
-    createdJobs.push({ ...job, id: queueJob.id, status: 'queued' });
+    createdJobs.push({ ...job, status: 'queued' });
   }
 
   addAuditLog({ actorId: req.user.sub, action: 'scene.created', entityType: 'scene', entityId: sceneId, details: { projectId: project.id, tasks } });
@@ -403,7 +380,7 @@ app.post('/api/projects/:projectId/scenes', async (req, res) => {
 });
 
 app.get('/api/scenes/:sceneId', async (req, res) => {
-  const scene = await getSceneById(req.params.sceneId);
+  const scene = memory.scenes.get(req.params.sceneId);
   if (!scene) return res.status(404).json({ error: 'Scene not found' });
   res.json(scene);
 });
@@ -478,7 +455,6 @@ app.post('/api/jobs/:jobId/approve', requireRole(['director', 'producer', 'admin
   memory.approvals.set(approval.id, approval);
   await dbInsertApproval(approval);
 
-  // update job status for approval state
   if (status === 'approved') {
     job.status = 'approved';
     await dbUpdateJob(job.id, 'approved', job.result || {});

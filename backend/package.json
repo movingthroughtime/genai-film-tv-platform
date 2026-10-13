@@ -1,7 +1,7 @@
 {
   "name": "genai-film-tv-backend",
   "version": "1.0.0",
-  "description": "Backend API for a generative AI platform for film and television production",
+  "description": "Backend API for a film and television generative AI platform",
   "main": "server.js",
   "license": "MIT",
   "scripts": {

@@ -1,7 +1,7 @@
 {
   "name": "genai-film-tv-frontend",
   "version": "1.0.0",
-  "description": "Frontend dashboard for a film and television generative AI platform",
+  "description": "Frontend dashboard for film and television generative AI platform",
   "main": "server.js",
   "license": "MIT",
   "scripts": {
