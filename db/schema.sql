@@ -48,6 +48,17 @@ CREATE TABLE IF NOT EXISTS prompt_templates (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS model_registry (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  type TEXT NOT NULL,
+  version TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS approvals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_id UUID,
@@ -87,3 +98,4 @@ CREATE INDEX IF NOT EXISTS idx_jobs_scene_id ON jobs(scene_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_project_id ON jobs(project_id);
 CREATE INDEX IF NOT EXISTS idx_approvals_job_id ON approvals(job_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_model_registry_type ON model_registry(type, status);

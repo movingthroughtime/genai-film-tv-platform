@@ -2,7 +2,7 @@
 
 A production-oriented starter for a generative-AI platform built to support film and television development workflows.
 
-This repo now includes:
+This repo includes:
 
 - Express API with PostgreSQL persistence
 - JWT auth with role-based access control (writer, director, producer, admin)
@@ -10,8 +10,10 @@ This repo now includes:
 - Python FastAPI ML service with OpenAI-ready generation integration
 - Worker service to process generation tasks asynchronously
 - Prompt template library and approval workflow
+- Model registry for versioned generation models
+- Asset upload and storage hooks for generated media
 - Audit logging for user actions and studio operations
-- Dashboard for projects, jobs, templates, and approvals
+- Dashboard for projects, jobs, templates, approvals, and models
 - Docker Compose stack for backend, worker, ML service, Postgres, Redis, and MinIO
 
 ## Features
@@ -21,6 +23,8 @@ This repo now includes:
 - Access control by role
 - Prompt templates for reusable production prompts
 - Approval states to review generation outputs
+- Versioned model registry for prompt and generation providers
+- Asset lifecycle support for generated media and exports
 - Audit logs for governance and traceability
 - Storage-ready design for generated media assets
 
@@ -30,9 +34,9 @@ This repo now includes:
 - Backend: REST API and orchestration
 - Queue: Redis + Bull for background tasks
 - Worker: dispatches jobs to the ML service
-- ML service: generation logic for script/storyboard/shotlist content
+- ML service: generation logic for scripts, storyboards, and shotlists
 - Storage: MinIO-ready asset storage pattern
-- Database: PostgreSQL for projects, scenes, jobs, templates, approvals, and logs
+- Database: PostgreSQL for projects, scenes, jobs, templates, approvals, logs, and model metadata
 
 ## Requirements
 
@@ -118,8 +122,8 @@ See `db/schema.sql` for the PostgreSQL schema.
 
 This starter is designed to be extended with:
 
-- model registry and prompt versioning
 - stricter per-project permissions
+- more advanced model governance and registry controls
 - moderation pipeline and content screening
 - real asset lifecycle management
 - render/transcode orchestration

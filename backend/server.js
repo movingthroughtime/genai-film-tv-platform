@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const Queue = require('bull');
 const fs = require('fs');
 const path = require('path');
+const Minio = require('minio');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -14,9 +15,22 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/genai';
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+const MINIO_ENDPOINT = process.env.MINIO_ENDPOINT || 'localhost';
+const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY || 'minioadmin';
+const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY || 'minioadmin';
+const MINIO_PORT = Number(process.env.MINIO_PORT || 9000);
+const MINIO_USE_SSL = String(process.env.MINIO_USE_SSL || 'false').toLowerCase() === 'true';
 
 const generationQueue = new Queue('generation', REDIS_URL);
 const db = new Client({ connectionString: DATABASE_URL });
+
+const minioClient = new Minio.Client({
+  endPoint: MINIO_ENDPOINT,
+  port: MINIO_PORT,
+  useSSL: MINIO_USE_SSL,
+  accessKey: MINIO_ACCESS_KEY,
+  secretKey: MINIO_SECRET_KEY
+});
 
 const memory = {
   users: new Map(),
@@ -24,6 +38,7 @@ const memory = {
   scenes: new Map(),
   jobs: new Map(),
   templates: new Map(),
+  models: new Map(),
   approvals: new Map(),
   auditLogs: []
 };
@@ -36,6 +51,15 @@ const demoUsers = [
 ];
 
 demoUsers.forEach((user) => memory.users.set(user.email.toLowerCase(), user));
+
+const demoModels = [
+  { id: 'model-script-v1', name: 'script-v1', provider: 'openai', type: 'script', version: '1.0.0', status: 'active', metadata: { notes: 'Cinematic script generation model' } },
+  { id: 'model-storyboard-v1', name: 'storyboard-v1', provider: 'openai', type: 'storyboard', version: '1.0.0', status: 'active', metadata: { notes: 'Storyboard framing model' } },
+  { id: 'model-shotlist-v1', name: 'shotlist-v1', provider: 'openai', type: 'shotlist', version: '1.0.0', status: 'active', metadata: { notes: 'Shot planning model' } }
+];
+
+demoModels.forEach((model) => memory.models.set(model.id, model));
+
 let dbReady = false;
 
 async function initDb() {
@@ -208,6 +232,23 @@ async function dbInsertTemplate(template) {
   }
 }
 
+async function dbInsertModel(model) {
+  if (!dbReady) return model;
+  try {
+    const query = `
+      INSERT INTO model_registry (id, name, provider, type, version, status, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, provider = EXCLUDED.provider, type = EXCLUDED.type, version = EXCLUDED.version, status = EXCLUDED.status, metadata = EXCLUDED.metadata
+      RETURNING *;
+    `;
+    const row = await db.query(query, [model.id, model.name, model.provider, model.type, model.version, model.status, JSON.stringify(model.metadata || {})]);
+    return row.rows[0] || model;
+  } catch (err) {
+    console.warn('Model insert failed:', err.message);
+    return model;
+  }
+}
+
 async function getProjects() {
   if (dbReady) {
     const result = await db.query('SELECT * FROM projects ORDER BY created_at DESC');
@@ -248,6 +289,14 @@ async function getTemplates() {
   return Array.from(memory.templates.values());
 }
 
+async function getModels() {
+  if (dbReady) {
+    const result = await db.query('SELECT * FROM model_registry ORDER BY created_at DESC');
+    return result.rows;
+  }
+  return Array.from(memory.models.values());
+}
+
 async function getApprovals() {
   if (dbReady) {
     const result = await db.query('SELECT * FROM approvals ORDER BY created_at DESC');
@@ -256,8 +305,35 @@ async function getApprovals() {
   return Array.from(memory.approvals.values());
 }
 
+async function uploadToMinio({ key, type, content, metadata = {} }) {
+  if (!minioClient || !key) return null;
+
+  try {
+    const bucket = 'studio-assets';
+    await minioClient.bucketExists(bucket).catch(async () => {
+      await minioClient.makeBucket(bucket, 'us-east-1');
+    });
+
+    const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content || '', 'utf8');
+    await minioClient.putObject(bucket, key, buffer, buffer.length, {
+      'Content-Type': type || 'application/octet-stream',
+      'x-amz-meta-source': 'genai-platform',
+      ...metadata
+    });
+
+    return {
+      bucket,
+      key,
+      url: `${MINIO_USE_SSL ? 'https' : 'http'}://${MINIO_ENDPOINT}:${MINIO_PORT}/${bucket}/${key}`
+    };
+  } catch (err) {
+    console.warn('MinIO upload failed:', err.message);
+    return null;
+  }
+}
+
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'backend', dbReady });
@@ -430,6 +506,28 @@ app.post('/api/templates', requireRole(['producer', 'admin']), async (req, res) 
   res.status(201).json(template);
 });
 
+app.get('/api/models', async (req, res) => {
+  res.json(await getModels());
+});
+
+app.post('/api/models', requireRole(['producer', 'admin']), async (req, res) => {
+  const model = {
+    id: uuidv4(),
+    name: req.body.name || 'new-model',
+    provider: req.body.provider || 'openai',
+    type: req.body.type || 'script',
+    version: req.body.version || '1.0.0',
+    status: req.body.status || 'active',
+    metadata: req.body.metadata || {},
+    createdAt: new Date().toISOString()
+  };
+
+  memory.models.set(model.id, model);
+  await dbInsertModel(model);
+  addAuditLog({ actorId: req.user.sub, action: 'model.registered', entityType: 'model', entityId: model.id, details: { name: model.name, version: model.version } });
+  res.status(201).json(model);
+});
+
 app.get('/api/approvals', async (req, res) => {
   const approvals = await getApprovals();
   res.json(approvals);
@@ -465,6 +563,34 @@ app.post('/api/jobs/:jobId/approve', requireRole(['director', 'producer', 'admin
 
   addAuditLog({ actorId: req.user.sub, action: 'job.approved', entityType: 'job', entityId: req.params.jobId, details: { status, comment: approval.comment } });
   res.json({ approval, job });
+});
+
+app.post('/api/assets/upload', requireRole(['writer', 'director', 'producer', 'admin']), async (req, res) => {
+  const { key, type, content, metadata } = req.body || {};
+  if (!key) return res.status(400).json({ error: 'Asset key is required' });
+
+  const uploadResult = await uploadToMinio({
+    key,
+    type: type || 'application/octet-stream',
+    content,
+    metadata: metadata || {}
+  });
+
+  const asset = {
+    id: uuidv4(),
+    key,
+    type: type || 'application/octet-stream',
+    metadata: {
+      ...(metadata || {}),
+      uploadedBy: req.user.sub,
+      storage: uploadResult ? 'minio' : 'memory'
+    },
+    createdAt: new Date().toISOString(),
+    url: uploadResult ? uploadResult.url : null
+  };
+
+  addAuditLog({ actorId: req.user.sub, action: 'asset.uploaded', entityType: 'asset', entityId: key, details: { key, type: asset.type, url: asset.url } });
+  res.status(201).json(asset);
 });
 
 app.get('/api/audit-logs', requireRole(['director', 'producer', 'admin']), async (req, res) => {

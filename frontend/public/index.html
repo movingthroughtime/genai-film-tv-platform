@@ -23,7 +23,7 @@
         color: var(--text);
         font-family: Arial, sans-serif;
       }
-      .container { max-width: 1280px; margin: 32px auto; padding: 24px; }
+      .container { max-width: 1360px; margin: 32px auto; padding: 24px; }
       .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
       h1, h2 { margin-top: 0; }
       .badge {
@@ -31,7 +31,7 @@
       }
       .layout { display: grid; grid-template-columns: 1.1fr 1.4fr; gap: 24px; }
       .panel { background: rgba(22, 27, 34, 0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 18px; margin-bottom: 18px; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
       label { display: block; margin-top: 12px; margin-bottom: 6px; color: var(--muted); }
       input, textarea, select, button {
         width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: var(--panel-2); color: var(--text); font-size: 14px;
@@ -110,6 +110,26 @@
           <label>Prompt</label>
           <textarea id="templatePrompt">Write a cinematic scene in the style of {tone} with a haptic sense of {location}. Keep the dialogue sharp and grounded.</textarea>
           <button id="createTemplateBtn">Save template</button>
+
+          <h2 style="margin-top: 28px;">Model registry</h2>
+          <label>Name</label>
+          <input id="modelName" value="script-v2" />
+          <label>Provider</label>
+          <input id="modelProvider" value="openai" />
+          <label>Type</label>
+          <input id="modelType" value="script" />
+          <label>Version</label>
+          <input id="modelVersion" value="2.0.0" />
+          <button id="createModelBtn">Register model</button>
+
+          <h2 style="margin-top: 28px;">Asset upload</h2>
+          <label>Asset key</label>
+          <input id="assetKey" value="storyboards/night-exterior-chase.json" />
+          <label>Type</label>
+          <input id="assetType" value="application/json" />
+          <label>Content</label>
+          <textarea id="assetContent">{"scene":"night-exterior-chase","status":"queued"}</textarea>
+          <button id="uploadAssetBtn">Upload asset</button>
         </section>
 
         <section class="panel">
@@ -117,6 +137,8 @@
           <ul id="projectList"></ul>
           <h2 style="margin-top: 28px;">Jobs</h2>
           <ul id="jobList"></ul>
+          <h2 style="margin-top: 28px;">Models</h2>
+          <ul id="modelList"></ul>
           <h2 style="margin-top: 28px;">Approvals</h2>
           <ul id="approvalList"></ul>
         </section>
@@ -128,6 +150,7 @@
       const API_BASE_URL = window.API_BASE_URL || 'http://localhost:4000';
       const projectList = document.getElementById('projectList');
       const jobList = document.getElementById('jobList');
+      const modelList = document.getElementById('modelList');
       const approvalList = document.getElementById('approvalList');
       const authStatus = document.getElementById('authStatus');
       const projectIdInput = document.getElementById('projectId');
@@ -173,6 +196,7 @@
         authStatus.textContent = `Authenticated as ${result.user.name} (${result.user.role})`;
         await loadProjects();
         await loadJobs();
+        await loadModels();
         await loadApprovals();
       }
 
@@ -222,6 +246,30 @@
           });
         } catch (err) {
           jobList.innerHTML = '<li class="muted">Unable to load jobs.</li>';
+        }
+      }
+
+      async function loadModels() {
+        try {
+          const models = await fetchJson(`${API_BASE_URL}/api/models`);
+          modelList.innerHTML = '';
+
+          if (!models.length) {
+            modelList.innerHTML = '<li class="muted">No models registered yet.</li>';
+            return;
+          }
+
+          models.forEach((model) => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+              <strong>${model.name}</strong><br>
+              <span class="muted">${model.type} • ${model.version}</span><br>
+              ${renderStatus(model.status || 'active')}
+            `;
+            modelList.appendChild(li);
+          });
+        } catch (err) {
+          modelList.innerHTML = '<li class="muted">Unable to load models.</li>';
         }
       }
 
@@ -304,14 +352,55 @@
         }
       });
 
+      document.getElementById('createModelBtn').addEventListener('click', async () => {
+        try {
+          const payload = {
+            name: document.getElementById('modelName').value,
+            provider: document.getElementById('modelProvider').value,
+            type: document.getElementById('modelType').value,
+            version: document.getElementById('modelVersion').value,
+            status: 'active',
+            metadata: { createdFrom: 'studio-ui' }
+          };
+          const model = await fetchJson(`${API_BASE_URL}/api/models`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+          console.log('Model registered:', model);
+          await loadModels();
+        } catch (err) {
+          authStatus.textContent = 'Only a producer or admin can register models.';
+        }
+      });
+
+      document.getElementById('uploadAssetBtn').addEventListener('click', async () => {
+        try {
+          const payload = {
+            key: document.getElementById('assetKey').value,
+            type: document.getElementById('assetType').value,
+            content: document.getElementById('assetContent').value,
+            metadata: { source: 'studio-ui' }
+          };
+          const asset = await fetchJson(`${API_BASE_URL}/api/assets/upload`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+          });
+          console.log('Asset uploaded:', asset);
+        } catch (err) {
+          authStatus.textContent = 'Asset upload failed. Check your permissions or MinIO config.';
+        }
+      });
+
       if (authToken) {
         authStatus.textContent = 'Token restored from local storage.';
       }
 
       loadProjects();
       loadJobs();
+      loadModels();
       loadApprovals();
       setInterval(loadJobs, 5000);
+      setInterval(loadModels, 5000);
       setInterval(loadApprovals, 5000);
     </script>
   </body>
