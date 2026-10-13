@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const { Client } = require('pg');
+const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const Queue = require('bull');
@@ -22,7 +22,12 @@ const MINIO_PORT = Number(process.env.MINIO_PORT || 9000);
 const MINIO_USE_SSL = String(process.env.MINIO_USE_SSL || 'false').toLowerCase() === 'true';
 
 const generationQueue = new Queue('generation', REDIS_URL);
-const db = new Client({ connectionString: DATABASE_URL });
+const db = new Pool({
+  connectionString: DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000
+});
 
 const minioClient = new Minio.Client({
   endPoint: MINIO_ENDPOINT,
@@ -62,9 +67,15 @@ demoModels.forEach((model) => memory.models.set(model.id, model));
 
 let dbReady = false;
 
+function parsePagination(req) {
+  const limit = Math.min(Number(req.query.limit) || 25, 100);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+  return { limit, offset };
+}
+
 async function initDb() {
   try {
-    await db.connect();
+    await db.query('SELECT 1');
     dbReady = true;
     console.log('PostgreSQL connected');
     await ensureDbSchema();
@@ -121,6 +132,9 @@ function addAuditLog({ actorId, action, entityType, entityId, details = {} }) {
     createdAt: new Date().toISOString()
   };
   memory.auditLogs.unshift(entry);
+  if (memory.auditLogs.length > 5000) {
+    memory.auditLogs.length = 5000;
+  }
   if (dbReady) {
     db.query(
       'INSERT INTO audit_logs (id, actor_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -221,7 +235,7 @@ async function dbInsertTemplate(template) {
     const query = `
       INSERT INTO prompt_templates (id, name, description, template, variables, is_active, created_by)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, template = EXCLUDED.template, variables = EXCLUDED.variables, is_active = EXCLUDED.is_active, created_by = EXCLUDED.created_by
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, template = EXCLUDED.template, variables = EXCLUDED.variables, is_active = EXCLUDED.is_active, created_at = NOW()
       RETURNING *;
     `;
     const row = await db.query(query, [template.id, template.name, template.description || '', template.template, JSON.stringify(template.variables || []), template.isActive !== false, template.createdBy || '']);
@@ -249,12 +263,12 @@ async function dbInsertModel(model) {
   }
 }
 
-async function getProjects() {
+async function getProjects({ limit = 25, offset = 0 } = {}) {
   if (dbReady) {
-    const result = await db.query('SELECT * FROM projects ORDER BY created_at DESC');
+    const result = await db.query('SELECT * FROM projects ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
     return result.rows;
   }
-  return Array.from(memory.projects.values());
+  return Array.from(memory.projects.values()).slice(offset, offset + limit);
 }
 
 async function getProjectById(projectId) {
@@ -265,12 +279,12 @@ async function getProjectById(projectId) {
   return memory.projects.get(projectId) || null;
 }
 
-async function getJobs() {
+async function getJobs({ limit = 25, offset = 0 } = {}) {
   if (dbReady) {
-    const result = await db.query('SELECT * FROM jobs ORDER BY created_at DESC');
+    const result = await db.query('SELECT * FROM jobs ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
     return result.rows;
   }
-  return Array.from(memory.jobs.values());
+  return Array.from(memory.jobs.values()).slice(offset, offset + limit);
 }
 
 async function getJobById(jobId) {
@@ -281,39 +295,44 @@ async function getJobById(jobId) {
   return memory.jobs.get(jobId) || null;
 }
 
-async function getTemplates() {
+async function getTemplates({ limit = 25, offset = 0 } = {}) {
   if (dbReady) {
-    const result = await db.query('SELECT * FROM prompt_templates ORDER BY created_at DESC');
+    const result = await db.query('SELECT * FROM prompt_templates ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
     return result.rows;
   }
-  return Array.from(memory.templates.values());
+  return Array.from(memory.templates.values()).slice(offset, offset + limit);
 }
 
-async function getModels() {
+async function getModels({ limit = 25, offset = 0 } = {}) {
   if (dbReady) {
-    const result = await db.query('SELECT * FROM model_registry ORDER BY created_at DESC');
+    const result = await db.query('SELECT * FROM model_registry ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
     return result.rows;
   }
-  return Array.from(memory.models.values());
+  return Array.from(memory.models.values()).slice(offset, offset + limit);
 }
 
-async function getApprovals() {
+async function getApprovals({ limit = 25, offset = 0 } = {}) {
   if (dbReady) {
-    const result = await db.query('SELECT * FROM approvals ORDER BY created_at DESC');
+    const result = await db.query('SELECT * FROM approvals ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
     return result.rows;
   }
-  return Array.from(memory.approvals.values());
+  return Array.from(memory.approvals.values()).slice(offset, offset + limit);
+}
+
+async function ensureBucket() {
+  const bucket = 'studio-assets';
+  const exists = await minioClient.bucketExists(bucket).catch(() => false);
+  if (!exists) {
+    await minioClient.makeBucket(bucket, 'us-east-1').catch(() => {});
+  }
+  return bucket;
 }
 
 async function uploadToMinio({ key, type, content, metadata = {} }) {
   if (!minioClient || !key) return null;
 
   try {
-    const bucket = 'studio-assets';
-    await minioClient.bucketExists(bucket).catch(async () => {
-      await minioClient.makeBucket(bucket, 'us-east-1');
-    });
-
+    const bucket = await ensureBucket();
     const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content || '', 'utf8');
     await minioClient.putObject(bucket, key, buffer, buffer.length, {
       'Content-Type': type || 'application/octet-stream',
@@ -381,7 +400,8 @@ app.get('/api/me', requireAuth, (req, res) => {
 app.use('/api', requireAuth);
 
 app.get('/api/projects', async (req, res) => {
-  const projects = await getProjects();
+  const { limit, offset } = parsePagination(req);
+  const projects = await getProjects({ limit, offset });
   res.json(projects);
 });
 
@@ -426,8 +446,9 @@ app.post('/api/projects/:projectId/scenes', async (req, res) => {
 
   const createdJobs = [];
   for (const taskType of tasks) {
+    const jobId = uuidv4();
     const job = {
-      id: uuidv4(),
+      id: jobId,
       sceneId,
       projectId: project.id,
       taskType,
@@ -440,13 +461,18 @@ app.post('/api/projects/:projectId/scenes', async (req, res) => {
     await dbInsertJob(job);
 
     await generationQueue.add({
+      jobId,
       sceneId,
       projectId: project.id,
       title: scene.title,
       brief: scene.brief,
       taskType,
       userId: req.user.sub
-    }, { attempts: 3, backoff: 5000 });
+    }, {
+      jobId,
+      attempts: 3,
+      backoff: 5000
+    });
 
     createdJobs.push({ ...job, status: 'queued' });
   }
@@ -462,7 +488,8 @@ app.get('/api/scenes/:sceneId', async (req, res) => {
 });
 
 app.get('/api/jobs', async (req, res) => {
-  const jobs = await getJobs();
+  const { limit, offset } = parsePagination(req);
+  const jobs = await getJobs({ limit, offset });
   res.json(jobs);
 });
 
@@ -485,7 +512,8 @@ app.get('/api/jobs/:jobId', async (req, res) => {
 });
 
 app.get('/api/templates', async (req, res) => {
-  res.json(await getTemplates());
+  const { limit, offset } = parsePagination(req);
+  res.json(await getTemplates({ limit, offset }));
 });
 
 app.post('/api/templates', requireRole(['producer', 'admin']), async (req, res) => {
@@ -507,7 +535,8 @@ app.post('/api/templates', requireRole(['producer', 'admin']), async (req, res) 
 });
 
 app.get('/api/models', async (req, res) => {
-  res.json(await getModels());
+  const { limit, offset } = parsePagination(req);
+  res.json(await getModels({ limit, offset }));
 });
 
 app.post('/api/models', requireRole(['producer', 'admin']), async (req, res) => {
@@ -529,7 +558,8 @@ app.post('/api/models', requireRole(['producer', 'admin']), async (req, res) => 
 });
 
 app.get('/api/approvals', async (req, res) => {
-  const approvals = await getApprovals();
+  const { limit, offset } = parsePagination(req);
+  const approvals = await getApprovals({ limit, offset });
   res.json(approvals);
 });
 
@@ -594,12 +624,14 @@ app.post('/api/assets/upload', requireRole(['writer', 'director', 'producer', 'a
 });
 
 app.get('/api/audit-logs', requireRole(['director', 'producer', 'admin']), async (req, res) => {
-  res.json(memory.auditLogs.slice(0, 100));
+  const { limit, offset } = parsePagination(req);
+  res.json(memory.auditLogs.slice(offset, offset + limit));
 });
 
 app.get('/api/assets', async (req, res) => {
+  const { limit, offset } = parsePagination(req);
   if (!dbReady) return res.json([]);
-  const result = await db.query('SELECT * FROM assets ORDER BY created_at DESC');
+  const result = await db.query('SELECT * FROM assets ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
   res.json(result.rows);
 });
 

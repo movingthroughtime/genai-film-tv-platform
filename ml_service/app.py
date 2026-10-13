@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import os
-import requests
+import httpx
 
 app = FastAPI(title='Generative AI Film & TV Service')
 
@@ -18,7 +18,7 @@ def health():
     return {"status": "ok", "service": "ml_service"}
 
 @app.post('/generate')
-def generate(req: GenerateRequest):
+async def generate(req: GenerateRequest):
     task_type = req.taskType.lower()
     api_key = os.getenv('OPENAI_API_KEY', '').strip()
     model = os.getenv('MODEL_NAME', 'gpt-4o-mini')
@@ -34,9 +34,10 @@ def generate(req: GenerateRequest):
 
     if api_key and api_key != 'demo-key':
         try:
-            llm_content = call_openai(model, f"Generate a {task_type} for a film scene. Title: {req.title}. Brief: {req.brief}")
-            if llm_content:
-                content = llm_content
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                llm_content = await call_openai(client, model, f"Generate a {task_type} for a film scene. Title: {req.title}. Brief: {req.brief}")
+                if llm_content:
+                    content = llm_content
         except Exception as exc:
             print(f'OpenAI call failed: {exc}')
 
@@ -92,22 +93,24 @@ def build_shotlist(title: str, brief: str):
     }
 
 
-def call_openai(model: str, prompt: str):
+async def call_openai(client: httpx.AsyncClient, model: str, prompt: str):
     api_key = os.getenv('OPENAI_API_KEY', '').strip()
     if not api_key or api_key == 'demo-key':
         return None
 
-    headers = {
-        'Authorization': f'Bearer {api_key}',
-        'Content-Type': 'application/json'
-    }
-    data = {
-        'model': model,
-        'messages': [{'role': 'user', 'content': prompt}],
-        'max_tokens': 600,
-        'temperature': 0.7
-    }
-    response = requests.post('https://api.openai.com/v1/chat/completions', json=data, headers=headers, timeout=60)
+    response = await client.post(
+        'https://api.openai.com/v1/chat/completions',
+        json={
+            'model': model,
+            'messages': [{'role': 'user', 'content': prompt}],
+            'max_tokens': 600,
+            'temperature': 0.7
+        },
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+    )
     response.raise_for_status()
     payload = response.json()
     return {"type": "llm_generated", "content": payload['choices'][0]['message']['content']}
