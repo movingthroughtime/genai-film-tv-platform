@@ -16,50 +16,92 @@ const db = new Pool({
 
 const generationQueue = new Queue('generation', REDIS_URL);
 
-generationQueue.process(4, async (job) => {
+const concurrency = Number(process.env.WORKER_CONCURRENCY || 4);
+
+generationQueue.process(concurrency, async (job) => {
   const { jobId, sceneId, projectId, title, brief, taskType, userId } = job.data;
 
-  console.log(`Processing job ${job.id} for scene ${sceneId}: ${taskType}`);
+  console.log(`Processing job ${jobId} for scene ${sceneId}: ${taskType}`);
 
-  const response = await axios.post(`${ML_SERVICE_URL}/generate`, {
-    sceneId,
-    projectId,
-    title,
-    brief,
-    taskType,
-    userId
-  }, {
-    timeout: 120000
-  });
+  // mark as processing
+  if (jobId) {
+    try {
+      await db.query(
+        `UPDATE jobs SET status = $1, updated_at = NOW() WHERE id = $2`,
+        ['processing', jobId]
+      );
+    } catch (e) {
+      console.warn('Failed to mark job processing:', e.message);
+    }
+  }
 
-  const result = {
-    jobId,
-    sceneId,
-    projectId,
-    taskType,
-    result: response.data,
-    assetEndpoint: MINIO_ENDPOINT,
-    createdAt: new Date().toISOString()
-  };
+  try {
+    const response = await axios.post(`${ML_SERVICE_URL}/generate`, {
+      sceneId,
+      projectId,
+      title,
+      brief,
+      taskType,
+      userId
+    }, {
+      timeout: 120000
+    });
 
-  await db.query(
-    `UPDATE jobs
-     SET status = $1,
-         result = $2,
-         updated_at = NOW()
-     WHERE id = $3`,
-    ['completed', JSON.stringify(result), jobId]
-  );
+    const result = {
+      jobId,
+      sceneId,
+      projectId,
+      taskType,
+      result: response.data,
+      assetEndpoint: MINIO_ENDPOINT,
+      createdAt: new Date().toISOString()
+    };
 
-  return result;
+    if (jobId) {
+      try {
+        await db.query(
+          `UPDATE jobs
+           SET status = $1,
+               result = $2,
+               updated_at = NOW()
+           WHERE id = $3`,
+          ['completed', JSON.stringify(result), jobId]
+        );
+      } catch (e) {
+        console.warn('Failed to persist job result:', e.message);
+      }
+    }
+
+    return result;
+  } catch (err) {
+    console.error(`Job ${jobId} failed during generation:`, err.message);
+
+    if (jobId) {
+      try {
+        await db.query(
+          `UPDATE jobs
+           SET status = $1,
+               result = $2,
+               updated_at = NOW()
+           WHERE id = $3`,
+          ['failed', JSON.stringify({ error: err.message }), jobId]
+        );
+      } catch (e) {
+        console.warn('Failed to persist failed job status:', e.message);
+      }
+    }
+
+    // rethrow so Bull records the failure and handles retries
+    throw err;
+  }
 });
 
 generationQueue.on('completed', (job, result) => {
-  console.log(`Job ${job.id} completed (${result.taskType})`);
+  console.log(`Job ${job.data.jobId || job.id} completed (${job.data.taskType})`);
 });
 
 generationQueue.on('failed', (job, err) => {
-  console.error(`Job ${job.id} failed: ${err.message}`);
+  console.error(`Job ${job.data.jobId || job.id} failed: ${err.message}`);
 });
 
-console.log('Worker listening for generation jobs...');
+console.log(`Worker listening for generation jobs (concurrency=${concurrency})...`);
