@@ -1,18 +1,19 @@
 {
   "name": "genai-film-tv-backend",
   "version": "1.0.0",
-  "description": "Backend API for the film and television generative AI platform",
+  "description": "Backend API for a generative AI platform for film and television production",
   "main": "server.js",
   "license": "MIT",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "bull": "^4.16.4",
-    "" : "",
     "body-parser": "^1.21.1",
+    "bull": "^4.16.4",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.12.0",
     "uuid": "^9.0.0"
   }
 }

@@ -1,52 +1,81 @@
 # Generative AI Platform for Film & Television Production
 
-This repository contains a starter monorepo for a generative-AI platform tailored to film and television production. It includes:
+This repository is a starter monorepo for a generative-AI platform tailored to film and television production. It includes:
 
-- Express backend API for projects, scenes, and jobs
-- BullMQ-style Redis job queue for async generation
-- Python FastAPI microservice for ML generation orchestration
-- Worker service that processes queued tasks
-- Static frontend for creating scenes and monitoring job status
-- Docker Compose setup for local development
+- Express API with Postgres-backed project, scene, and job persistence
+- JWT-based demo auth and role checks
+- Redis-backed job queue for async generation tasks
+- Python FastAPI ML microservice with OpenAI integration fallback
+- Worker service that processes generation jobs
+- Minimal front-end dashboard for project and job management
+- Docker Compose stack with Postgres, Redis, MinIO, backend, worker, ML service, and frontend
 
 ## Architecture
 
-- Frontend: quick UI for submitting scene generation requests
-- Backend: project/scene/job management API
-- Queue: Redis handling for long-running AI tasks
-- Worker: dispatches work to the ML service
-- ML service: LLM and generation orchestration layer
-- Storage: ready for S3/MinIO integration for generated assets
+- Frontend: project and job dashboard UI
+- Backend: REST API and orchestration
+- Queue: Redis + Bull for background jobs
+- Worker: dispatches jobs to the ML service
+- ML service: script/storyboard/shotlist generation with an OpenAI fallback for local dev
+- Storage: MinIO-ready for generated assets
+- Database: PostgreSQL for project-scoped persistence
 
 ## Requirements
 
-- Docker + Docker Compose
+- Docker and Docker Compose
 - Node.js 20+
 - Python 3.12+
+- OpenAI API key (optional for local dev fallback)
 
 ## Quick start
 
 1. Copy environment variables:
-   ```bash
-   cp .env.example .env
-   ```
+
+```bash
+cp .env.example .env
+```
 
 2. Start the stack:
-   ```bash
-   docker compose up --build
-   ```
+
+```bash
+docker compose up --build
+```
 
 3. Open the app:
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:4000
-   - ML service: http://localhost:8000/docs
+
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:4000
+- ML service docs: http://localhost:8000/docs
+- MinIO console: http://localhost:9001
+
+## Auth
+
+Use the demo login endpoint:
+
+```bash
+curl -X POST http://localhost:4000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"demo@studio.local","name":"Demo User"}'
+```
+
+Use the returned JWT as a bearer token for protected routes.
 
 ## Example API requests
 
-Create a scene and enqueue generation jobs:
+Create a project:
 
 ```bash
-curl -X POST http://localhost:4000/api/projects/film-project-001/scenes \
+curl -X POST http://localhost:4000/api/projects \
+  -H 'Authorization: Bearer <jwt>' \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Project Atlas","description":"A rainy urban thriller."}'
+```
+
+Create a scene and queue generation tasks:
+
+```bash
+curl -X POST http://localhost:4000/api/projects/<project-id>/scenes \
+  -H 'Authorization: Bearer <jwt>' \
   -H 'Content-Type: application/json' \
   -d '{
     "title": "Night exterior chase",
@@ -55,36 +84,35 @@ curl -X POST http://localhost:4000/api/projects/film-project-001/scenes \
   }'
 ```
 
-Check job status:
+Check a job:
 
 ```bash
 curl http://localhost:4000/api/jobs/<job-id>
 ```
 
-## Components
+## Database schema
 
-### Backend
-Located in `backend/`. Handles project/scene creation and job submission.
-
-### Worker
-Located in `worker/`. Pulls queued generation jobs and calls the ML service.
-
-### ML Service
-Located in `ml_service/`. Runs generation logic for scripts, storyboards, and shotlists.
-
-### Frontend
-Located in `frontend/`. A minimal UI for submitting new scene requests and polling job state.
+See `db/schema.sql` for the PostgreSQL schema.
 
 ## Production notes
 
-This starter is intentionally simple and should be extended with:
+This MVP includes:
 
-- Postgres persistence and migrations
-- S3/MinIO asset uploads
-- Content moderation and policy checks
-- Human approval workflows
-- Model registry and version tracking
-- Queue retry, backoff, and observability
+- JWT auth skeleton
+- Postgres-backed persistence
+- Redis queue
+- MinIO-compatible asset strategy
+- Basic moderation / logging hooks
+- Real OpenAI call integration when configured
+
+For production, add:
+
+- RBAC with roles (writer, director, producer, admin)
+- Abstract model registry and prompt templates
+- Human-in-the-loop approvals
+- Policy screening for generated output
+- Asset versioning, thumbnails, and transcodes
+- Observability and billing
 
 ## License
 

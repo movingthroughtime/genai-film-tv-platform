@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import os
+import requests
 
 app = FastAPI(title='Generative AI Film & TV Service')
 
@@ -10,6 +11,7 @@ class GenerateRequest(BaseModel):
     title: str
     brief: str
     taskType: str
+    userId: str | None = None
 
 @app.get('/health')
 def health():
@@ -18,41 +20,94 @@ def health():
 @app.post('/generate')
 def generate(req: GenerateRequest):
     taskType = req.taskType.lower()
+    api_key = os.getenv('OPENAI_API_KEY', '').strip()
+    model = os.getenv('MODEL_NAME', 'gpt-4o-mini')
 
     if taskType == 'script':
-        output = {
-            "type": "script",
-            "content": f"INT. {req.title.upper()} - NIGHT\n\nA tense sequence unfolds as the team moves through a rain-soaked urban environment. The atmosphere is charged with urgency, realism, and cinematic motion.\n\n{req.brief}\n\nCUT TO:\n\nCHARACTER 1: We have one chance.\nCHARACTER 2: Then we take it.\n\nThe frame tightens as the sequence resolves in a dramatic and controlled rhythm."
-        }
+        content = build_script(req.title, req.brief)
     elif taskType == 'storyboard':
-        output = {
-            "type": "storyboard",
-            "panels": [
-                {"panel": 1, "prompt": f"Establishing drone shot of {req.title}, cinematic wide angle, wet streets, nighttime, moody practical light"},
-                {"panel": 2, "prompt": f"Tracking close-up of lead character in motion, dramatic tension, handheld realism, expressive lighting"},
-                {"panel": 3, "prompt": f"Final reveal shot, emotional payoff, strong composition, cinematic color grade"}
-            ]
-        }
+        content = build_storyboard(req.title, req.brief)
     elif taskType == 'shotlist':
-        output = {
-            "type": "shotlist",
-            "shots": [
-                {"shot": 1, "description": "Wide establishing shot of the city block", "camera": "Drone", "movement": "Slow push-in"},
-                {"shot": 2, "description": "Tracking shot following the lead character", "camera": "Handheld", "movement": "Left-to-right glide"},
-                {"shot": 3, "description": "Close-up reaction shot", "camera": "35mm lens", "movement": "Subtle rack focus"}
-            ]
-        }
+        content = build_shotlist(req.title, req.brief)
     else:
         raise HTTPException(status_code=400, detail=f'Unsupported taskType: {taskType}')
+
+    if api_key and api_key != 'demo-key':
+        try:
+            llm_content = call_openai(model, f"Generate a {taskType} for a film scene. Title: {req.title}. Brief: {req.brief}")
+            if llm_content:
+                content = llm_content
+        except Exception as exc:
+            print(f'OpenAI call failed: {exc}')
 
     return {
         "success": True,
         "sceneId": req.sceneId,
         "projectId": req.projectId,
         "taskType": req.taskType,
-        "output": output,
+        "output": content,
         "meta": {
-            "model": os.getenv('MODEL_NAME', 'demo-model'),
-            "provider": 'local-starter'
+            "model": model,
+            "provider": 'openai' if api_key and api_key != 'demo-key' else 'local-starter'
         }
     }
+
+
+def build_script(title: str, brief: str):
+    return {
+        "type": "script",
+        "content": (
+            f"INT. {title.upper()} - NIGHT\n\n"
+            f"A tense sequence unfolds as the team moves through a rain-soaked urban environment. "
+            f"The atmosphere is charged with urgency, realism, and cinematic motion.\n\n"
+            f"{brief}\n\n"
+            "CUT TO:\n\n"
+            "CHARACTER 1: We have one chance.\n"
+            "CHARACTER 2: Then we take it.\n\n"
+            "The frame tightens as the sequence resolves in a dramatic and controlled rhythm."
+        )
+    }
+
+
+def build_storyboard(title: str, brief: str):
+    return {
+        "type": "storyboard",
+        "panels": [
+            {"panel": 1, "prompt": f"Establishing drone shot of {title}, cinematic wide angle, wet streets, nighttime, moody practical light"},
+            {"panel": 2, "prompt": f"Tracking close-up in motion, dramatic tension, handheld realism, expressive lighting, {brief}"},
+            {"panel": 3, "prompt": f"Final reveal shot, emotional payoff, strong composition, cinematic color grade, {title}"}
+        ]
+    }
+
+
+def build_shotlist(title: str, brief: str):
+    return {
+        "type": "shotlist",
+        "shots": [
+            {"shot": 1, "description": f"Wide establishing shot of {title}", "camera": "Drone", "movement": "Slow push-in"},
+            {"shot": 2, "description": "Tracking shot following the lead character", "camera": "Handheld", "movement": "Left-to-right glide"},
+            {"shot": 3, "description": "Close-up reaction shot with emotional emphasis", "camera": "35mm lens", "movement": "Subtle rack focus"}
+        ],
+        "brief": brief
+    }
+
+
+def call_openai(model: str, prompt: str):
+    api_key = os.getenv('OPENAI_API_KEY', '').strip()
+    if not api_key or api_key == 'demo-key':
+        return None
+
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json'
+    }
+    data = {
+        'model': model,
+        'messages': [{'role': 'user', 'content': prompt}],
+        'max_tokens': 600,
+        'temperature': 0.7
+    }
+    response = requests.post('https://api.openai.com/v1/chat/completions', json=data, headers=headers, timeout=60)
+    response.raise_for_status()
+    payload = response.json()
+    return {"type": "llm_generated", "content": payload['choices'][0]['message']['content']}
