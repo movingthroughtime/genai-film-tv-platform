@@ -1,0 +1,13 @@
+{
+  "name": "genai-film-tv-frontend",
+  "version": "1.0.0",
+  "description": "Small frontend for the film & TV generative AI platform",
+  "main": "server.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GenAI Studio</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --panel: #161b22;
+        --panel-2: #1f2630;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #7dd3fc;
+        --accent-2: #a78bfa;
+        --success: #2ea043;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: linear-gradient(135deg, #090d12, #101827 60%, #1b1027);
+        color: var(--text);
+      }
+      .container {
+        max-width: 1200px;
+        margin: 40px auto;
+        padding: 24px;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+      }
+      h1 { margin: 0; }
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+      }
+      .panel {
+        background: rgba(22, 27, 34, 0.9);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        padding: 20px;
+      }
+      label { display: block; margin-top: 12px; margin-bottom: 6px; color: var(--muted); }
+      input, textarea, select, button {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: var(--panel-2);
+        color: var(--text);
+        font-size: 14px;
+      }
+      textarea { min-height: 120px; resize: vertical; }
+      button {
+        margin-top: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0b1220;
+        border: none;
+      }
+      .project-list, .job-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .project-list li, .job-list li {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 10px;
+        padding: 12px;
+        margin-top: 10px;
+      }
+      code {
+        background: rgba(255,255,255,0.04);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .status {
+        display: inline-block;
+        background: rgba(46, 160, 67, 0.18);
+        color: #9be9a8;
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 12px;
+      }
+      .muted { color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>GenAI Studio</h1>
+        <div class="status">Film / TV Production AI</div>
+      </div>
+
+      <div class="layout">
+        <section class="panel">
+          <h2>Create a project</h2>
+          <label>Project title</label>
+          <input id="projectTitle" value="Project Atlas" />
+          <label>Description</label>
+          <textarea id="projectDescription">A cinematic thriller in a rain-soaked urban environment.</textarea>
+          <button id="createProjectBtn">Create project</button>
+
+          <h2 style="margin-top: 28px;">New scene</h2>
+          <label>Project ID</label>
+          <input id="projectId" placeholder="Project id from the list" />
+          <label>Scene title</label>
+          <input id="sceneTitle" value="Night exterior chase" />
+          <label>Scene brief</label>
+          <textarea id="sceneBrief">A tense night chase through a wet city block with neon reflections and escalating conflict.</textarea>
+          <label>Tasks</label>
+          <select id="sceneTasks" multiple>
+            <option value="script" selected>script</option>
+            <option value="storyboard" selected>storyboard</option>
+            <option value="shotlist" selected>shotlist</option>
+          </select>
+          <button id="createSceneBtn">Create scene & queue generation</button>
+        </section>
+
+        <section class="panel">
+          <h2>Projects</h2>
+          <ul class="project-list" id="projectList"></ul>
+
+          <h2 style="margin-top: 28px;">Jobs</h2>
+          <ul class="job-list" id="jobList"></ul>
+        </section>
+      </div>
+    </div>
+
+    <script src="/config.js"></script>
+    <script>
+      const API_BASE_URL = window.API_BASE_URL || 'http://localhost:4000';
+
+      const projectList = document.getElementById('projectList');
+      const jobList = document.getElementById('jobList');
+      const projectIdInput = document.getElementById('projectId');
+
+      async function fetchJson(url, options) {
+        const res = await fetch(url, options);
+        return res.json();
+      }
+
+      async function loadProjects() {
+        const projects = await fetchJson(`${API_BASE_URL}/api/projects`);
+        projectList.innerHTML = '';
+        if (!projects.length) {
+          projectList.innerHTML = '<li class="muted">No projects yet.</li>';
+          return;
+        }
+
+        projects.forEach((project) => {
+          const li = document.createElement('li');
+          li.innerHTML = `
+            <strong>${project.title}</strong><br>
+            <span class="muted">${project.id}</span>
+          `;
+          li.addEventListener('click', () => {
+            projectIdInput.value = project.id;
+          });
+          projectList.appendChild(li);
+        });
+      }
+
+      async function loadJobs() {
+        const jobs = await fetchJson(`${API_BASE_URL}/api/jobs`);
+        jobList.innerHTML = '';
+        if (!jobs.length) {
+          jobList.innerHTML = '<li class="muted">No jobs yet.</li>';
+          return;
+        }
+
+        jobs.forEach((job) => {
+          const li = document.createElement('li');
+          li.innerHTML = `
+            <strong>${job.taskType}</strong><br>
+            <span class="muted">Job: ${job.id}</span><br>
+            <span class="status">${job.status || 'queued'}</span>
+          `;
+          jobList.appendChild(li);
+        });
+      }
+
+      document.getElementById('createProjectBtn').addEventListener('click', async () => {
+        const payload = {
+          title: document.getElementById('projectTitle').value,
+          description: document.getElementById('projectDescription').value
+        };
+        const project = await fetchJson(`${API_BASE_URL}/api/projects`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        projectIdInput.value = project.id;
+        await loadProjects();
+      });
+
+      document.getElementById('createSceneBtn').addEventListener('click', async () => {
+        const selected = Array.from(document.getElementById('sceneTasks').selectedOptions).map((o) => o.value);
+        const payload = {
+          title: document.getElementById('sceneTitle').value,
+          brief: document.getElementById('sceneBrief').value,
+          tasks: selected.length ? selected : ['script']
+        };
+
+        const response = await fetchJson(`${API_BASE_URL}/api/projects/${projectIdInput.value}/scenes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        console.log('Scene created:', response);
+        await loadJobs();
+      });
+
+      loadProjects();
+      loadJobs();
+      setInterval(loadJobs, 5000);
+    </script>
+  </body>
+</html>
